@@ -474,6 +474,24 @@ struct ReadoutSlot {
 // ===========================================================================
 // The mod
 // ===========================================================================
+
+// The BML+ version this mod declares it requires.
+//
+// The SDK's DECLARE_BML_VERSION macro would report BML_*_VERSION straight from
+// Version.h, i.e. the version of the SDK the mod was *built* against (0.3.13).
+// That is not the same thing as the minimum host the mod needs, and the loader
+// only uses this value for one check:
+//
+//     BMLVersion curVer;                      // the running host
+//     if (curVer < GetBMLVersion()) reject;   // ModContext.cpp
+//
+// so it is the mod's *requirement*, not its build provenance. It is written out
+// by hand (instead of using the macro) to keep the declared floor independent of
+// whichever SDK happens to be in deps/.
+#define RK_BML_VERSION_MAJOR 0
+#define RK_BML_VERSION_MINOR 3
+#define RK_BML_VERSION_PATCH 12
+
 class RainingKeysMod final : public IMod {
 public:
     explicit RainingKeysMod(IBML *bml) : IMod(bml) {}
@@ -486,7 +504,9 @@ public:
     const char *GetDescription() override {
         return "Raining Keys for Ballance. ";
     }
-    DECLARE_BML_VERSION;
+    // Minimum host BML+ the mod requires. The loader rejects the mod when the
+    // running host is older than this. See RK_BML_VERSION_* above.
+    BMLVersion GetBMLVersion() override { return {RK_BML_VERSION_MAJOR, RK_BML_VERSION_MINOR, RK_BML_VERSION_PATCH}; }
 
     // --- lifecycle ---------------------------------------------------------
     void OnLoad() override {
@@ -505,7 +525,8 @@ public:
         ReadConfigAll();
         ReadCounts();
 
-        Log("[RainingKeys] loaded. BML SDK %s, ImGui headers %s, slots=%d active=%d viewport=%.0fx%.0f",
+        Log("[RainingKeys] loaded. BML declared>=%d.%d.%d, built against SDK %s, ImGui headers %s, slots=%d active=%d viewport=%.0fx%.0f",
+            RK_BML_VERSION_MAJOR, RK_BML_VERSION_MINOR, RK_BML_VERSION_PATCH,
             BML_VERSION, IMGUI_VERSION, m_BoundSlots, CountActive(),
             m_ViewportSize.x, m_ViewportSize.y);
 

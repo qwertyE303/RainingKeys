@@ -2,6 +2,8 @@
 
 Ballance版**KeyViewer**/**RainingKeys**。
 
+**当前只适配BML+ 0.3.12及以上版本！！！**
+
 ---
 
 ## 功能
