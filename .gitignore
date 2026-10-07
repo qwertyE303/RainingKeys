@@ -1,0 +1,68 @@
+# ===========================================================================
+# RainingKeys -- ignore rules
+#
+# Repository root = this folder (E:\DSH Workspace\RainingKeys\RainingKeys)
+# Rule of thumb: only the mod's own sources ship in git. Everything that is
+# external (SDKs), generated (build output, packages) or authored elsewhere
+# (dev notes, tooling) lives in the parent workspace folder and is not tracked.
+# ===========================================================================
+
+# --- Legacy BML work in progress --------------------------------------------
+# src/bml-old holds the legacy loader (.bmod) port; bml-old holds the CMake
+# project and scripts that build it. It compiles and loads, but its drawing
+# layer is still being reworked, so it stays out of the repository for now.
+# Drop these entries once the port is finished.
+src/bml-old/
+bml-old/
+*.bmod
+
+# --- Build output -----------------------------------------------------------
+# build.bat writes to <workspace>\build by default, but anything created here
+# by a manual cmake run is ignored too.
+build/
+build-bml-old/
+out/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+*.bmodp
+*.dll
+*.lib
+*.exp
+*.obj
+*.pdb
+*.ilk
+*.idb
+*.res
+*.manifest
+
+# --- External dependencies (downloaded separately, see README) --------------
+deps/
+*SDK*/
+
+# --- Release packages -------------------------------------------------------
+dist/
+release/
+*.zip
+
+# --- Editor / IDE -----------------------------------------------------------
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+CMakeUserPresets.json
+compile_commands.json
+
+# --- Scratch / temporary ----------------------------------------------------
+*.log
+*.tmp
+*.bak
+*.bak-*
+*.old
+*.old-zh
+~$*
+Thumbs.db
+desktop.ini
+
+*.bat
