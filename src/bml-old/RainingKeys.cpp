@@ -1,49 +1,51 @@
 // ===========================================================================
-// RainingKeys - Key display for Ballance (BML+ native mod)
+// RainingKeys - Key display for Ballance (LEGACY BML native mod, .bmod)
 // ---------------------------------------------------------------------------
 // KeyViewer-like display: one box per key; on press the box changes color and
 // shrinks, and a colored band flows out of it. The band keeps drifting after
 // release until it leaves the screen.
 //
-// RENDERING (established empirically in the P0 probe):
-//   Host BMLPlus 0.3.14 embeds Dear ImGui 1.92.9b, while the official 0.3.13
-//   SDK ships 1.92.8. With that mismatch, ImGui::Begin() windows silently draw
-//   nothing (Begin() returns true and the draw list is valid, but the geometry
-//   gets fully clipped). ImGui::GetForegroundDrawList() works, so this mod
-//   draws everything through the foreground draw list and never opens a window.
+// This file is the legacy-loader sibling of ../RainingKeys.cpp and is generated
+// from it (see tools/make_bml_old_source.ps1) so that the two stay diffable:
+// the simulation, the layout maths and every single draw call are meant to be
+// textually identical. Everything host specific sits behind one include:
 //
-// COORDINATES: viewport pixels, origin at the top-left. 1 unit = 1 screen pixel.
+//   <imgui.h>   ->  "rk_imgui_compat.hpp"
+//
+// That facade implements exactly the handful of ImGui calls this mod makes, on
+// top of Virtools 2D entities -  the legacy loader has no ImGui whatsoever
+// (BML 0.3.43 exports 2433 symbols, none of them ImGui; verified with dumpbin).
+// Concretely it redirects:
+//
+//   ImGui::GetTime()          -> CKTimeManager::GetTime() * 0.001
+//                                (that API reports MILLISECONDS; treating it as
+//                                seconds makes every frame delta exceed the
+//                                mod's 0.25s clamp and freezes all animation,
+//                                which is what killed every rain band before)
+//   GetIO().WantTextInput     -> InputHook::IsBlock()
+//   GetMainViewport()         -> CKRenderContext::GetWidth/GetHeight()
+//   GetForegroundDrawList()   -> a per-frame command buffer realised into a pool
+//                                of CK2dEntity + CKMaterial quads and BGui::Text
+//                                sprites, z-ordered by submission index so the
+//                                painter's order of the three draw passes is
+//                                preserved exactly
+//
+// Loader differences the facade cannot hide - and only these:
+//   * entry point: the legacy loader has no unload path, so no BMLExit is
+//     exported (it calls OnUnload and deletes the instance itself on shutdown)
+//   * press counts live in ModLoader\Config (no trailing "s")
+//   * the in-game message board draws straight into a CKSpriteText and does not
+//     parse the ANSI colour codes, so its message is plain text
+//
+// COORDINATES: render-context pixels, origin at the top-left. 1 unit = 1 pixel.
 // ===========================================================================
 
+// Legacy BML declares the IMod string API with CKSTRING, which is plain
+// `const char*` (virtools/CKTypes.h) - identical to BML+ - so the shared code
+// needs no string translation at all.
 #include <BML/BMLAll.h>
+#include "rk_imgui_compat.hpp"
 
-// --- Host compatibility -----------------------------------------------------
-// The mod-facing API of BML+ and of the legacy BML loader is *almost* the same,
-// with three differences that a single source can absorb:
-//
-//   * the IBML pointer member: legacy BML calls it m_bml, BML+ calls it m_BML.
-//     The call sites below use m_bml and the alias keeps the BML+ build happy.
-//   * the version macros: BML+ 0.3.0-0.3.2 use BML_*_VER and a BMLVersion field
-//     named "build"; 0.3.3+ use BML_*_VERSION and "patch".
-//   * string types: legacy BML returns CKSTRING (char*), BML+ returns
-//     const char*.
-//
-// What cannot be shared is *rendering*. This mod draws through ImGui, and the
-// legacy BML loader (0.3.24 - 0.3.43, verified with dumpbin) exports no ImGui
-// symbol at all - it has no ImGui to draw through. Supporting it therefore needs
-// a second drawing backend built on Virtools 2D entities, not a compatibility
-// shim. Everything else here (config, input, commands, file I/O) is already
-// host-neutral.
-#ifndef m_bml
-#  define m_bml m_BML
-#endif
-#if defined(BML_MINOR_VERSION) && (BML_MINOR_VERSION < 3)
-#  define BML_BUILD_VAR_NAME(x) (x).build
-#else
-#  define BML_BUILD_VAR_NAME(x) (x).patch
-#endif
-
-#include "imgui.h"
 
 #include <algorithm>
 #include <cmath>
@@ -510,22 +512,12 @@ struct ReadoutSlot {
 // The mod
 // ===========================================================================
 
-// The BML+ version this mod declares it requires.
-//
-// The SDK's DECLARE_BML_VERSION macro would report BML_*_VERSION straight from
-// Version.h, i.e. the version of the SDK the mod was *built* against (0.3.13).
-// That is not the same thing as the minimum host the mod needs, and the loader
-// only uses this value for one check:
-//
-//     BMLVersion curVer;                      // the running host
-//     if (curVer < GetBMLVersion()) reject;   // ModContext.cpp
-//
-// so it is the mod's *requirement*, not its build provenance. It is written out
-// by hand (instead of using the macro) to keep the declared floor independent of
-// whichever SDK happens to be in deps/.
-#define RK_BML_VERSION_MAJOR 0
-#define RK_BML_VERSION_MINOR 3
-#define RK_BML_VERSION_PATCH 12
+// Version gate. The legacy loader also compares BMLVersion{major,minor,build}
+// and rejects a host older than the declared one, but here the declared version
+// IS the build provenance: this target is compiled against the legacy BML
+// 0.3.43 SDK (BuildVer.h) for the matching 0.3.43 runtime. The only wrinkle is
+// the field name - legacy BMLVersion's third member is "build" while BML+
+// 0.3.3+ calls it "patch" - and DECLARE_BML_VERSION absorbs that.
 
 class RainingKeysMod final : public IMod {
 public:
@@ -539,12 +531,29 @@ public:
     const char *GetDescription() override {
         return "Raining Keys for Ballance. ";
     }
-    // Minimum host BML+ the mod requires. The loader rejects the mod when the
-    // running host is older than this. See RK_BML_VERSION_* above.
-    BMLVersion GetBMLVersion() override { return {RK_BML_VERSION_MAJOR, RK_BML_VERSION_MINOR, RK_BML_VERSION_PATCH}; }
+    DECLARE_BML_VERSION;
+
+    // -----------------------------------------------------------------------
+    // Legacy-SDK workaround: two vtable slots that BML+ does not have.
+    //
+    // 0.3.34 added OnPhysicalize / OnUnphysicalize to IMod, growing its vtable
+    // from 18 to 20 entries - which is exactly why the two loaders cannot share
+    // one binary. IMod is declared __declspec(dllimport), so MSVC expects even
+    // these inline-defaulted slots to come from BML.dll, and the import library
+    // shipped with the 0.3.43 SDK predates them (it still has the 18-entry IMod).
+    // Overriding the two slots with no-ops both satisfies the linker and states
+    // plainly that this mod has nothing to do with physicalization.
+    // -----------------------------------------------------------------------
+    void OnPhysicalize(CK3dEntity*, CKBOOL, float, float, float, CKSTRING, CKBOOL, CKBOOL,
+                       CKBOOL, float, float, CKSTRING, VxVector, int, CKMesh**, int, VxVector*,
+                       float*, int, CKMesh**) override {}
+    void OnUnphysicalize(CK3dEntity*) override {}
 
     // --- lifecycle ---------------------------------------------------------
     void OnLoad() override {
+        // Bind the drawing facade to the host before anything can draw.
+        ImGui::Compat::Init(m_bml, GetLogger());
+
         if (const ImGuiViewport *vp = ImGui::GetMainViewport()) {
             m_ViewportSize = vp->Size;
         }
@@ -557,8 +566,7 @@ public:
         ReadConfigAll();
         ReadCounts();
 
-        Log("[RainingKeys] loaded. BML declared>=%d.%d.%d, built against SDK %s, ImGui headers %s, slots=%d active=%d viewport=%.0fx%.0f",
-            RK_BML_VERSION_MAJOR, RK_BML_VERSION_MINOR, RK_BML_VERSION_PATCH,
+        Log("[RainingKeys] loaded. BML SDK %s, drawing backend %s, slots=%d active=%d viewport=%.0fx%.0f",
             BML_VERSION, IMGUI_VERSION, m_BoundSlots, CountActive(),
             m_ViewportSize.x, m_ViewportSize.y);
 
@@ -575,9 +583,37 @@ public:
             }
         }
 
+        // Legacy-only: report what the readout binding decided, because the
+        // config menu cannot show it (see this script's step 3b).
+        if (m_CfgShowDebug.GetBool()) {
+            Log("[RainingKeys] readouts: KPS=%s Total=%s%s",
+                m_Kps.bound ? "bound" : "off", m_Total.bound ? "bound" : "off",
+                (m_Kps.bound && m_Total.bound)
+                    ? ""
+                    : " (a category whose switch is enabled during this session appears"
+                      " in the menu only after a restart: this loader builds the Mod"
+                      " Options GUI once, at base.cmo load)");
+        }
+
         RegisterCommands();
 
         // No "mod loaded" message on purpose: the in-game chat should stay clean.
+    }
+
+    // The counts used to be flushed only from OnUnload, which never runs here:
+    // IMod::OnUnload is broadcast solely by ModLoader::Release(), whose only
+    // trigger is DllMain(DLL_PROCESS_DETACH), and Ballance never gets there.
+    // Two independent proofs from a real session: Release() logs "Releasing Mod
+    // Loader" and "Goodbye!" unconditionally and neither line appears in the
+    // log, and Release() also saves the config again, while RainingKeys.cfg's
+    // timestamp stays at the moment the session *started*.
+    //
+    // The in-game exit message is delivered while the process is still fully
+    // alive - the log shows it - so the counts are flushed there. That is also
+    // the safer place for file I/O than a DLL detach handler.
+    void OnExitGame() override {
+        SaveCounts();
+        Log("[RainingKeys] exit game; counts flushed");
     }
 
     void OnUnload() override {
@@ -588,6 +624,12 @@ public:
     // --- per-frame simulation ---------------------------------------------
     void OnProcess() override {
         if (!m_bml) return;
+
+        // Opens the drawing frame before any early return below, so a gated-off
+        // frame still tells the backend to clear what was on screen. A retained
+        // host keeps drawing whatever was last shown, so "draw nothing" has to
+        // be said out loud. The matching EndFrame is at the end of DrawOverlay.
+        ImGui::Compat::BeginFrame();
 
         const float now = static_cast<float>(ImGui::GetTime());
         float dt = (m_LastTime < 0.0f) ? 0.0f : (now - m_LastTime);
@@ -837,7 +879,7 @@ private:
             std::snprintf(gameRoot, sizeof(gameRoot), ".");
         }
 
-        std::snprintf(path, sizeof(path), "%s\\ModLoader\\Configs\\RainingKeys.json", gameRoot);
+        std::snprintf(path, sizeof(path), "%s\\ModLoader\\Config\\RainingKeys.json", gameRoot);
         return path;
     }
 
@@ -890,7 +932,9 @@ private:
     void ClearAllCounts() {
         for (int i = 0; i < SLOT_CAPACITY; ++i) m_Slots[i].count = 0;
         SaveCounts();
-        if (m_bml) m_bml->SendIngameMessage("\x1b[32m[RainingKeys] all counts cleared.\x1b[0m");
+        // Plain text on purpose: the legacy message board writes straight into
+        // a CKSpriteText and would render the ANSI escape codes literally.
+        if (m_bml) m_bml->SendIngameMessage("[RainingKeys] all counts cleared.");
         Log("[RainingKeys] all counts cleared");
     }
 
@@ -992,6 +1036,8 @@ private:
             if (!m_Slots[i].enabled) continue;
             DrawSlotBox(dl, m_Slots[i], origin, offX, offY, gScale);
         }
+
+        ImGui::Compat::EndFrame();
     }
 
     // A readout is a plain box: no key binding and no band. It uses the same
@@ -1981,8 +2027,4 @@ private:
 // ===========================================================================
 MOD_EXPORT IMod *BMLEntry(IBML *bml) {
     return new RainingKeysMod(bml);
-}
-
-MOD_EXPORT void BMLExit(IMod *mod) {
-    delete mod;
 }

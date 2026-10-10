@@ -2,23 +2,28 @@
 # RainingKeys -- ignore rules
 #
 # Repository root = this folder (E:\DSH Workspace\RainingKeys\RainingKeys)
-# Rule of thumb: only the mod's own sources ship in git. Everything that is
-# external (SDKs), generated (build output, packages) or authored elsewhere
-# (dev notes, tooling) lives in the parent workspace folder and is not tracked.
+# Rule of thumb: the mod's two sources and both CMake projects ship in git.
+# Everything external (SDKs), generated (build output, packages), machine
+# specific (the build/deploy scripts, which hard-code local paths) or authored
+# elsewhere (dev notes, tooling) lives in the parent workspace folder and is not
+# tracked.
 # ===========================================================================
 
-# --- Legacy BML work in progress --------------------------------------------
-# src/bml-old holds the legacy loader (.bmod) port; bml-old holds the CMake
-# project and scripts that build it. It compiles and loads, but its drawing
-# layer is still being reworked, so it stays out of the repository for now.
-# Drop these entries once the port is finished.
-src/bml-old/
-bml-old/
-*.bmod
+# --- Legacy BML port --------------------------------------------------------
+# src/bml-old holds the legacy loader (.bmod) port and bml-old the CMake project
+# that builds it. Both are tracked as of v0.1.1: the port is complete and
+# verified, so there is no ignore block for them any more.
+#
+# Reminder: RainingKeys\src\bml-old\RainingKeys.cpp is GENERATED from
+# src\RainingKeys.cpp by <workspace>\tools\make_bml_old_source.ps1 - never hand
+# edit it, and regenerate (or run the script with -Check) after touching the
+# BML+ source.
 
 # --- Build output -----------------------------------------------------------
-# build.bat writes to <workspace>\build by default, but anything created here
-# by a manual cmake run is ignored too.
+# The build trees themselves live outside the repository (<workspace>\build and
+# <workspace>\build-bml-old), but anything created here by a manual cmake run is
+# ignored too. Both artifacts (.bmodp = BML+, .bmod = legacy BML) are ignored:
+# they are rebuilt from source and shipped through <workspace>\release.
 build/
 build-bml-old/
 out/
@@ -26,6 +31,7 @@ cmake-build-*/
 CMakeCache.txt
 CMakeFiles/
 *.bmodp
+*.bmod
 *.dll
 *.lib
 *.exp
@@ -43,6 +49,7 @@ deps/
 # --- Release packages -------------------------------------------------------
 dist/
 release/
+_backup/
 *.zip
 
 # --- Editor / IDE -----------------------------------------------------------
@@ -65,4 +72,9 @@ compile_commands.json
 Thumbs.db
 desktop.ini
 
+# --- Batch scripts ----------------------------------------------------------
+# Not tracked on purpose: the build/deploy scripts hard-code this machine's SDK
+# and game paths, so they are local tooling rather than repository content. The
+# build steps themselves are documented in README.md / CHANGELOG.md.
 *.bat
+bml-old/*.bat
