@@ -2,8 +2,6 @@
 
 Ballance版**KeyViewer**/**RainingKeys**。
 
-**当前只适配BML+ 0.3.12及以上版本！！！**
-
 ---
 
 ## 功能
@@ -39,8 +37,8 @@ Ballance版**KeyViewer**/**RainingKeys**。
 | **OnlyInLevel** | 只在关卡内显示。 |
 | **OffsetX**、**OffsetY** | 全局坐标。 |
 | **Scale** | 全局缩放。 |
-| **KeyNums** | 打开的按键数量。**老BML更改完需要重启游戏以新增设置选项！** |
-| **EnableKPS**、**EnableTotal** | 打开KPS/Total。**老BML更改完需要重启游戏以新增设置选项！** |
+| **KeyNums** | 打开的按键数量。**更改完需要重启游戏以新增设置选项！** |
+| **EnableKPS**、**EnableTotal** | 打开KPS/Total。**更改完需要重启游戏以新增设置选项！** |
 | **EnableDebugLog** | 打开调试日志，一般不用打开。 |
 
 ### 2. 一般Key
